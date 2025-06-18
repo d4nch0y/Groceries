@@ -29,6 +29,39 @@ db.products.aggregate([
   { $sort: { totalStock: -1 } }
 ]);
 
+// Допълнителни агрегации за продукти
+// 1. Групиране по тип с обща стойност на наличностите
+db.products.aggregate([
+  {
+    $group: {
+      _id: "$type",
+      totalStockValue: { $sum: { $multiply: ["$price", "$stock"] } },
+      averagePrice: { $avg: "$price" },
+      count: { $sum: 1 }
+    }
+  },
+  {
+    $sort: { totalStockValue: -1 }
+  }
+]);
+
+// 2. Най-скъпи продукти по категория
+db.products.aggregate([
+  {
+    $unwind: "$categories"
+  },
+  {
+    $group: {
+      _id: "$categories",
+      maxPrice: { $max: "$price" },
+      products: { $push: "$name" }
+    }
+  },
+  {
+    $sort: { maxPrice: -1 }
+  }
+]);
+
 // ============== SUPPLIERS ==============
 // Всички доставчици
 db.suppliers.find({});
@@ -48,6 +81,37 @@ db.suppliers.deleteMany({ products: { $size: 0 } });
 // Агрегация: Брой доставчици по град
 db.suppliers.aggregate([
   { $group: { _id: "$location", count: { $sum: 1 } } }
+]);
+
+// Допълнителни агрегации за доставчици
+// 1. Групиране по местоположение с среден рейтинг
+db.suppliers.aggregate([
+  {
+    $group: {
+      _id: "$location",
+      avgRating: { $avg: "$rating" },
+      supplierCount: { $sum: 1 }
+    }
+  },
+  {
+    $sort: { avgRating: -1 }
+  }
+]);
+
+// 2. Доставчици с най-много продукти
+db.suppliers.aggregate([
+  {
+    $project: {
+      name: 1,
+      productCount: { $size: "$products" }
+    }
+  },
+  {
+    $sort: { productCount: -1 }
+  },
+  {
+    $limit: 5
+  }
 ]);
 
 // ============== CUSTOMERS ==============
@@ -71,6 +135,45 @@ db.customers.aggregate([
   { $group: { _id: "$address.city", count: { $sum: 1 } } }
 ]);
 
+// Допълнителни агрегации за клиенти
+// 1. Групиране по град с брой поръчки
+db.customers.aggregate([
+  {
+    $group: {
+      _id: "$address.city",
+      totalOrders: { $sum: { $size: "$orders" } },
+      customerCount: { $sum: 1 }
+    }
+  },
+  {
+    $sort: { totalOrders: -1 }
+  }
+]);
+
+// 2. Клиенти с най-висока обща стойност на поръчките
+db.customers.aggregate([
+  {
+    $lookup: {
+      from: "orders",
+      localField: "orders",
+      foreignField: "_id",
+      as: "orderDetails"
+    }
+  },
+  {
+    $project: {
+      name: 1,
+      totalSpent: { $sum: "$orderDetails.total" }
+    }
+  },
+  {
+    $sort: { totalSpent: -1 }
+  },
+  {
+    $limit: 10
+  }
+]);
+
 // ============== ORDERS ==============
 // Всички поръчки
 db.orders.find({});
@@ -90,6 +193,43 @@ db.orders.deleteMany({ status: "отказана" });
 // Агрегация: Обща сума на поръчки по статус
 db.orders.aggregate([
   { $group: { _id: "$status", totalAmount: { $sum: "$total" } } }
+]);
+
+// Допълнителни агрегации за поръчки
+// 1. Групиране по статус с обща сума и брой
+db.orders.aggregate([
+  {
+    $group: {
+      _id: "$status",
+      totalAmount: { $sum: "$total" },
+      orderCount: { $sum: 1 },
+      avgOrderValue: { $avg: "$total" }
+    }
+  },
+  {
+    $sort: { totalAmount: -1 }
+  }
+]);
+
+// 2. Месечен отчет за продажбите
+db.orders.aggregate([
+  {
+    $project: {
+      month: { $month: "$orderDate" },
+      year: { $year: "$orderDate" },
+      total: 1
+    }
+  },
+  {
+    $group: {
+      _id: { month: "$month", year: "$year" },
+      totalSales: { $sum: "$total" },
+      orderCount: { $sum: 1 }
+    }
+  },
+  {
+    $sort: { "_id.year": 1, "_id.month": 1 }
+  }
 ]);
 
 // ============== CATEGORIES ==============
@@ -112,4 +252,39 @@ db.categories.deleteMany({ products: { $size: 0 } });
 db.categories.aggregate([
   { $project: { name: 1, productCount: { $size: "$products" } } },
   { $sort: { productCount: -1 } }
+]);
+
+// Допълнителни агрегации за категории
+// 1. Категории с най-много продукти
+db.categories.aggregate([
+  {
+    $project: {
+      name: 1,
+      productCount: { $size: "$products" }
+    }
+  },
+  {
+    $sort: { productCount: -1 }
+  }
+]);
+
+// 2. Категории с най-висока средна цена на продуктите
+db.categories.aggregate([
+  {
+    $lookup: {
+      from: "products",
+      localField: "products",
+      foreignField: "_id",
+      as: "productDetails"
+    }
+  },
+  {
+    $project: {
+      name: 1,
+      avgPrice: { $avg: "$productDetails.price" }
+    }
+  },
+  {
+    $sort: { avgPrice: -1 }
+  }
 ]);
